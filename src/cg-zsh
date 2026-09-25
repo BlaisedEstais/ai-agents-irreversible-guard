@@ -1,0 +1,34 @@
+#!/bin/sh
+# Shell « gardé » : passe la commande reçue en -c au garde-fou, puis lance /bin/zsh avec les mêmes arguments.
+# Branché sur Desktop Commander (réglage defaultShell), utilisable par tout outil qui laisse choisir son shell :
+#   SHELL=~/.claude/hooks/cg-zsh <outil>   ou   réglage « shell » de l'outil -> ~/.claude/hooks/cg-zsh
+# Le nom contient « zsh » exprès : Desktop Commander lui passe alors `-l -c <commande>` comme à zsh.
+# Refus : message sur stderr + code 126. Fail-open si python est absent (même principe que le hook).
+DIR="${0%/*}"
+cmd=
+want=
+for a in "$@"; do
+  if [ -n "$want" ]; then cmd="$a"; break; fi
+  case "$a" in
+    --*) ;;
+    -*c*) want=1 ;;
+  esac
+done
+if [ -n "$cmd" ]; then
+  . "$DIR/cg-prefilter.sh"
+  if cg_risky "$cmd"; then
+    for py in /Library/Developer/CommandLineTools/usr/bin/python3 \
+              /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /usr/local/bin/python3; do
+      if [ -x "$py" ]; then
+        msg=$("$py" -I -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import catastrophe_guard as g; sys.exit(g.main(sys.argv[2:]))' \
+              "$DIR" --shell-check "$cmd" "$PWD" "${CG_SESSION:-dc-$PPID}")
+        if [ $? -eq 3 ]; then
+          printf '%s\n' "$msg" >&2
+          exit 126
+        fi
+        break
+      fi
+    done
+  fi
+fi
+exec /bin/zsh "$@"

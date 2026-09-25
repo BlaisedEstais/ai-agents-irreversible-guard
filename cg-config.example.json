@@ -1,0 +1,37 @@
+{
+  "_README": "Copy me to ~/.claude/hooks/cg-config.json (chmod 600) and edit. This file describes YOUR machine; the engine stays generic. It is listed in .gitignore on purpose: saying what is protected also says what is not. Strict JSON only - no // comments; the _* keys below are ignored by the engine and exist to document each setting. Every key is optional: omit one and its built-in default applies. Paths accept ~, absolute paths, or a bare name (resolved against your home directory). Lookup order: $CG_CONFIG, then ~/.claude/hooks/cg-config.json, then cg-config.json next to catastrophe_guard.py.",
+
+  "_env": "Environment overrides, not settings: CG_CONFIG = path to this file · CG_LOG = journal path (default ~/.claude/hooks/catastrophe_guard.log) · CG_ACKS = self-confirmation ledger (default ~/.claude/hooks/acks.jsonl).",
+
+  "_comment": "Example values - replace them with yours. Any key starting with _ is free text for your own future self and is ignored by the engine.",
+
+  "_unlock_phrase": "The literal string a HUMAN must type in their own message to unlock a 🛑 action. Change it: the default is published, and a phrase nobody can guess also protects you from being talked into pasting it. Default: \"#go-destructif\".",
+  "unlock_phrase": "#go-destructif",
+
+  "_extra_critical": "Extra paths whose recursive deletion is catastrophic - yours and their ancestors become 🛑. Add your work folder, your secrets folder, your archives, a mounted backup disk. Default: [] (on top of the built-in list: home, Documents, Desktop, Downloads, Library, .ssh, .gnupg, agent config dirs...).",
+  "extra_critical": ["~/Projects", "~/Code", "~/Archives", "/Volumes/BACKUP"],
+
+  "_extra_precious_parents": "Folders whose DIRECT children are all precious (project roots, repo collections): deleting one child is never routine. Default: [] (on top of ~/Documents).",
+  "extra_precious_parents": ["~/Projects", "~/Code"],
+
+  "_extra_sensitive_dirs": "Directories where even a single-file delete or overwrite is treated as serious (no -r needed). Default: [] (on top of ~/.ssh, ~/.gnupg, ~/Library/Keychains and the guard's own directory).",
+  "extra_sensitive_dirs": ["~/.aws", "~/.kube"],
+
+  "_extra_sensitive_files": "Individual files that must never be removed or overwritten silently. Default: [] (on top of the agent settings files).",
+  "extra_sensitive_files": ["~/.netrc", "~/.npmrc"],
+
+  "_extra_temp_prefixes": "Scratch roots: anything inside is disposable and never blocked. Use for build caches and throwaway workspaces. WARNING - this is the one key that REMOVES protection; never point it at a folder holding real work. Default: [] (on top of /tmp, /private/tmp, /var/folders, ~/Library/Caches).",
+  "extra_temp_prefixes": ["~/scratch", "/var/tmp"],
+
+  "_protected_branches": "Git branches where force-push and deletion require a confirmation. Replaces the default entirely, so repeat the ones you want to keep. Default: [\"main\", \"master\", \"prod\", \"production\"].",
+  "protected_branches": ["main", "master", "prod", "production", "release"],
+
+  "_mcp_send_exempt": "Regexes matched against the tool name: matching tools are agent-to-agent plumbing, not a message to a human, so the 'sending a message' rule does not apply. Replaces the default entirely. Keep it tight - a wrong entry here silences email and chat confirmations. Default: [\"^mcp__ccd_\"].",
+  "mcp_send_exempt": ["^mcp__ccd_", "^mcp__internal_relay_"],
+
+  "_system_note": "One sentence appended to refusals that touch system integrity or OS updates (SIP, boot arguments, major upgrades), to remind whoever reads it why this machine is special. Leave empty if it is not. Default: \"\".",
+  "system_note": "",
+
+  "_hermes_cwd_hint": "Let the guard read the Hermes terminal's current directory from a hint file in a world-writable temp directory, to resolve relative paths. Off by default and recommended off: any local process can write there, so it must not weigh on a security decision. Default: false.",
+  "hermes_cwd_hint": false
+}

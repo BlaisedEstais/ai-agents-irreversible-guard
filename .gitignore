@@ -1,0 +1,6 @@
+cg-config.json
+*.log
+acks.jsonl
+__pycache__/
+.DS_Store
+tests/.sandbox/

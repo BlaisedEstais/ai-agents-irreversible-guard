@@ -1,0 +1,8 @@
+{
+  "name": "catastrophe-guard",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenClaw plugin: route exec/process/apply_patch/write/edit/sessions_spawn through the shared catastrophe guard",
+  "openclaw": { "extensions": ["./index.js"] }
+}

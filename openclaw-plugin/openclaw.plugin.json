@@ -1,0 +1,7 @@
+{
+  "id": "catastrophe-guard",
+  "name": "Catastrophe guard",
+  "description": "Bloque ou fait approuver les actions catastrophiques (même garde-fou que Claude Code / Codex / Hermes).",
+  "activation": { "onStartup": true },
+  "configSchema": { "type": "object", "additionalProperties": false }
+}
