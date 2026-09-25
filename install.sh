@@ -42,9 +42,11 @@ import json, os, shutil, sys, time
 HOME = os.path.expanduser("~")
 CMD = 'if [ -f "$HOME/.claude/hooks/catastrophe_guard.sh" ]; then /bin/sh "$HOME/.claude/hooks/catastrophe_guard.sh"; fi'
 # Regex non ancrée (doc hooks Claude Code). Write/Edit ont leurs propres entrées ci-dessous.
+# Le hook ne tourne que sur ces outils : tout ce qui lance une commande, écrit, supprime, envoie ou paie.
+# Les verbes destructifs sont listés largement (un connecteur peut dire « purge » ou « wipe » plutôt que « delete »).
 CLAUDE_MATCHER = ("Bash|Monitor|mcp__.*(bash|run_in_terminal|set_config_value|start_process|interact_with_process|"
-                  "osascript|hermes_delegate|execute|write_action|delete|write_file|edit_block|move_file|send|reply|"
-                  "forward|transfer|payment|pay).*")
+                  "osascript|hermes_delegate|execute|write_action|delete|destroy|purge|drop|wipe|erase|revoke|"
+                  "write_file|edit_block|move_file|send|reply|forward|transfer|payment|pay).*")
 # Éditions de fichiers : le hook ne se lance que sur les fichiers du garde-fou (champ `if`, syntaxe des règles de
 # permission, une règle par entrée ; une règle Edit couvre Write/Edit/MultiEdit/NotebookEdit ; « //** » = partout sur
 # le disque, « **/ » seul ne couvrirait que le dossier courant). Évite de faire

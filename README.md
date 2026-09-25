@@ -1,14 +1,35 @@
 # inattention-is-all-you-heed
 
-**A two-tier guardrail that stops AI agents from doing irreversible damage — and gets out of the way for everything else.**
+**Your AI agent can run `rm -rf`, drop a database or send an email with no confirmation dialog at all. This is that dialog — and it only appears when the action cannot be undone.**
 
-Most agent safety setups give you two bad options: approve every single tool call, or turn approvals off and hope. `inattention-is-all-you-heed` is a `PreToolUse` hook that asks a different question before a command runs — **not "is this dangerous?" but "is this recoverable?"** — and routes accordingly:
+```sh
+git clone https://github.com/BlaisedEstais/inattention-is-all-you-heed.git
+cd inattention-is-all-you-heed && sh install.sh --all
+```
+
+Thirty seconds. No dependencies beyond Python 3 and the shell you already have, no account, no network calls, no second model in the loop. It wires itself into Claude Code, Codex, OpenClaw and Desktop Commander in one pass, and starts working on the next tool call.
+
+## The problem, in one story
+
+In July 2025, an AI coding agent deleted a live production database during an explicit code freeze, then told its user that a rollback was impossible ([AI Incident Database #1152](https://incidentdatabase.ai/cite/1152/)). No malice, no jailbreak, no attacker: a capable agent, a plausible next step, and no dialog between the decision and the damage.
+
+Every desktop app you have ever used asks *"are you sure?"* before something final. Agents skip that step — they run the command. So the question this hook asks, on your behalf, is the one the dialog would have asked:
+
+> **This cannot be undone. Did you check the vendor's documentation for a way back? Is this exactly the target you meant?**
+> If yes and it *is* recoverable → go, no interruption.
+> If it is truly irreversible → the human decides, and nothing happens until they say so.
+
+## The problem with the fix, in one more
+
+Guardrails usually fail the other way. They ask so often, about things that were never dangerous, that you learn to approve without reading — and then you approve the one that mattered. Over-blocking is not caution, it is how confirmations stop working.
+
+So the routing is by **reversibility**, not by how scary a command looks:
 
 - 🛑 **Irreversible** (`rm -rf ~/Documents`, `DROP DATABASE`, deleting a Supabase project or an R2 bucket, removing branch protection, editing the guard itself) → **hard stop. Only a human unlocks it.**
-- ⚠️ **Recoverable but expensive** (force-push to `main`, deleting a repo, sending an email, moving money) → **the agent re-confirms itself**, in writing, against a checklist, and the whole thing is logged.
-- ✅ **Everything else** — including deleting things the agent itself created two minutes ago, or anything sitting in a 30-day trash — **runs with zero friction.**
+- ⚠️ **Recoverable but expensive** (force-push to `main`, deleting a repo, sending an email, moving money) → **the agent re-confirms itself**, in writing, against a checklist, and the whole thing is logged. You are not interrupted.
+- ✅ **Everything else** — including deleting what the agent itself created two minutes ago, or anything sitting in a 30-day trash — **runs with zero friction**. And when the agent chains the same kind of action, the checks [fade out on their own](#friction-decay-exponential-backoff).
 
-Measured on real history: **41,417 replayed Claude Code tool calls → 10 confirmations asked, 0 false stops.** **24,162 Codex tool calls → 0 interruptions.** 668 automated tests. ([How we measured](#benchmark-41417-real-tool-calls-replayed))
+Measured on real history: **41,417 replayed Claude Code tool calls → 10 confirmations asked of the agent, 0 false stops.** **24,162 Codex tool calls → 0 interruptions.** 668 automated tests. ([How we measured](#benchmark-41417-real-tool-calls-replayed))
 
 One honest sentence before anything else: **this guards against agent mistakes, not against a determined attacker.** A denylist is bypassable by construction — see [SECURITY.md](SECURITY.md). The real net underneath is still your trashes, your backups and narrowly-scoped tokens.
 
