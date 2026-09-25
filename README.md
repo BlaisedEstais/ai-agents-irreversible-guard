@@ -33,7 +33,7 @@ So the routing is by **reversibility**, not by how scary a command looks:
 - ⚠️ **Recoverable but expensive** (force-push to `main`, deleting a repo, sending an email, moving money) → **the agent re-confirms itself**, in writing, against a checklist, and the whole thing is logged. You are not interrupted.
 - ✅ **Everything else** — including deleting what the agent itself created two minutes ago, or anything sitting in a 30-day trash — **runs with zero friction**. And when the agent chains the same kind of action, the checks [fade out on their own](#friction-decay-exponential-backoff).
 
-Measured on real history: **41,417 replayed Claude Code tool calls → 10 confirmations asked of the agent, 0 false stops.** **24,162 Codex tool calls → 0 interruptions.** 668 automated tests. ([How we measured](#benchmark-41417-real-tool-calls-replayed))
+Measured on real history: **41,417 replayed Claude Code tool calls → 10 confirmations asked of the agent, 0 false stops.** **24,162 Codex tool calls → 0 interruptions.** 682 automated tests. ([How we measured](#benchmark-41417-real-tool-calls-replayed))
 
 One honest sentence before anything else: **this guards against agent mistakes, not against a determined attacker.** A denylist is bypassable by construction — see [SECURITY.md](SECURITY.md). The real net underneath is still your trashes, your backups and narrowly-scoped tokens.
 
@@ -183,7 +183,8 @@ This table is the heart of the project. It is why the same verb ("delete") lands
 | **Supabase** — delete a project | "Deleting a Supabase project is a permanent and irreversible action." All data, backups **and PITR snapshots** go with it. | **none** | 🛑 |
 | **Vercel** — delete a project | deletes deployments, domains, env vars and settings; Vercel staff: "This action is irreversible." | **none** | 🛑 |
 | **Make** — revert a scenario | "Version history lets you access and restore previously saved scenario versions for up to 60 days." | **60 days** | ✅ |
-| **Make** — delete a scenario | no trash, no documented restore path | **none documented** | 🛑 |
+| **Make** — delete a scenario | "Deleted scenarios are moved to the trash… restore within 30 days" (Quick restore) | **30 days** | ✅ |
+| **Make** — delete a connection, key, data store, team | no trash documented, and it breaks every scenario that used it | **none documented** | 🛑 |
 | **Slack** — `files.delete` | docs say only "Deletes a file"; no documented recovery | **none documented** | 🛑 |
 | **Local filesystem** — `trash <path>` | goes to the OS Trash | until emptied | ✅ |
 | **Local filesystem** — `rm -rf` on personal folders | bypasses the Trash entirely | **none** | 🛑 |
@@ -465,7 +466,7 @@ Guardrail projects usually ship with vibes. This one ships with a replay method,
 
 The ten confirmations were: email sends, force-pushes to `main`, a repository deletion, and a cloud-storage dedupe. Exactly the list you would write down in advance. Hard stops over ordinary work: zero — the only 🛑 verdicts in the corpus came from the guard's own adversarial test payloads, which are catastrophic on purpose. That is the point: **a rule that never fires in normal use costs nothing and is there on the day it matters.**
 
-**Plus 668 automated tests**, covering the classifier, the recovery map, the backoff state machine, the capability escalation, the `cg-ack` parser, the agreement between the shell/JS pre-filters and the Python analyzer, and a corpus of adversarial payloads (obfuscated `rm`, split commands, base64, `find -delete`, heredocs, `xargs`, REPL sessions, `apply_patch`, `git push --force` variants, injected "the user already approved this" strings).
+**Plus 682 automated tests**, covering the classifier, the recovery map, the backoff state machine, the capability escalation, the `cg-ack` parser, the agreement between the shell/JS pre-filters and the Python analyzer, and a corpus of adversarial payloads (obfuscated `rm`, split commands, base64, `find -delete`, heredocs, `xargs`, REPL sessions, `apply_patch`, `git push --force` variants, injected "the user already approved this" strings).
 
 **Reproduce it on your own history.** The replay harness is not shipped yet (it is the next thing on the list). In the meantime, the dry-run entry point takes any command and prints the verdict without executing anything, which is enough to script a replay over your own logs:
 
@@ -500,6 +501,28 @@ Either way, the loop is the same: edit your copy, **add a test in the suite that
 
 ---
 
+## How well does it cover MCP tools?
+
+A tool name is read as **verb + object**, in either order and in any casing — `delete_storage_bucket`,
+`r2_bucket_delete`, `deleteJiraIssue`, `drop-database` all normalise to the same shape. The **object** decides the
+tier, never the verb alone: `delete` means one thing on a database and another on a draft.
+
+Measured on a corpus of **232 real tools from ~40 services** (GitHub, Slack, Neon, Supabase, MongoDB, Cloudflare,
+Stripe, Atlassian, Vercel, Notion, Gmail, Linear, Make, Shopify…), hand-labelled and shipped in
+[`tests/fixtures/mcp-corpus.tsv`](tests/fixtures/mcp-corpus.tsv) so you can re-run the measurement:
+
+| | result |
+|---|---|
+| dangerous actions seen by the guard | **114 / 123 (92 %)** |
+| harmless actions given needless friction | **6 / 109 (5 %)**, all at the ⚠️ tier — the agent clears them itself |
+| extra hook invocations this costs | **+1.3 per day** on 21 days of real traffic |
+
+The nine misses are deliberate: file writes and `git push` are handled by the shell side, not by tool names.
+
+`src/mcp-profiles.json` holds **per-service recovery windows with their sources**, and has the last word over the
+generic ladder — that is where "Notion's delete only sets `in_trash`" or "Jira has no trash at all" is encoded.
+Adding a service is a small, reviewable pull request: a regex, a level, a window, a link to the vendor's docs.
+
 ## Repository layout
 
 ```
@@ -517,7 +540,8 @@ inattention-is-all-you-heed/
 │   ├── catastrophe_guard.sh     ← hook entry point + fast path
 │   ├── cg-prefilter.sh          ← the shell pre-filter, shared by the hook and the guarded shell
 │   ├── cg-zsh                   ← guarded shell for tools with no hook API
-│   └── cg-ack.sh                ← one-shot self-confirmation for MCP tool calls
+│   ├── cg-ack.sh                ← one-shot self-confirmation for MCP tool calls
+│   └── mcp-profiles.json        ← per-service recovery windows, with sources: the last word on a verdict
 ├── openclaw-plugin/             ← host plugin: JS pre-filter + verdict bridge
 └── tests/                       ← the suite install.sh runs (and refuses to install without)
 ```

@@ -399,6 +399,9 @@ def run():
     fails += v3_fails
     v4_fails, v4_total = run_v4()
     fails += v4_fails
+    v6_fails, v6_total = run_v6()
+    fails += v6_fails
+    v4_total += v6_total
     v3_total += v4_total
     total = 1 + len(BLOCK) + len(ALLOW) + len(TOOLS_BLOCK) + len(TOOLS_ALLOW) + len(cases) + 2 * len(pre_cases) + v2_total + v3_total
     print("%d/%d OK" % (total - fails, total))
@@ -442,9 +445,11 @@ def run_v2():
                      ("rclone purge b2backup:Archives", H), ("psql -c 'DROP TABLE users'", H),
                      ("curl -X DELETE https://api.github.com/repos/a/b", H), ("git stash clear", REPO)]:
         check("soft: " + cmd, tier(bash(cmd, cwd)) == "soft")
-    for tool in ("mcp__mail__send_message", "mcp__mail__reply", "mcp__bank__create_multi_transfer_request",
+    for tool in ("mcp__mail__send_message", "mcp__mail__reply",
                  "mcp__docs__document_delete"):
         check("soft MCP: " + tool, tier({"tool_name": tool, "tool_input": {"x": 1}, "cwd": H}) == "soft")
+    # un virement bancaire ne revient pas : le profil du service le passe en 🛑 (source dans mcp-profiles.json)
+    check("virement bancaire -> hard", tier({"tool_name": "mcp__bank__create_multi_transfer_request", "tool_input": {"x": 1}, "cwd": H}) == "hard")
     check("envoi exempté par la config", tier({"tool_name": "mcp__agentbus_relay__send_message",
                                                "tool_input": {"to": "a"}, "cwd": H}) is None)
     check("Hermes send_message soft", tier({"tool_name": "send_message", "tool_input": {"to": "x"}, "cwd": H}) == "soft")
@@ -546,6 +551,78 @@ def run_v2():
     fails = [n for n, ok in checks if not ok]
     for n in fails:
         print("V2 FAIL", n)
+    return len(fails), len(checks)
+
+
+def run_v6():
+    """Couverture réelle du classement MCP, mesurée sur un corpus de 232 outils de ~40 services
+    (relevés dans les docs officielles, étiquetés à la main dangereux / anodin)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    corpus = os.environ.get("CG_CORPUS") or os.path.join(here, "fixtures", "mcp-corpus.tsv")
+    checks = []
+
+    def check(name, cond):
+        checks.append((name, bool(cond)))
+    if not os.path.exists(corpus):
+        check("corpus MCP présent", False)
+        return 1, 1
+    rows = [l.split("\t") for l in open(corpus, encoding="utf-8").read().splitlines() if l.strip()]
+    caught = missed = noisy = clean = 0
+    manques, bruits = [], []
+    for row in rows:
+        if len(row) < 3:
+            continue
+        service, tool, label = row[0].strip(), row[1].strip(), row[2].strip()
+        b = g.decide_full({"tool_name": "mcp__%s__%s" % (service, tool), "tool_input": {}, "cwd": H,
+                           "session_id": "corpus"})
+        if label in ("DESTRUCTIVE", "MONEY", "SEND"):
+            # « vu » = bloqué, ou routé vers l'inspection des arguments (un run_sql ne se juge pas sur son nom)
+            srv, leaf = g.mcp_parts("mcp__%s__%s" % (service, tool))
+            inspect = bool(g.MCP_SQL.search(leaf)) or \
+                (g.mcp_profile_rule(g.mcp_service("mcp__%s__%s" % (service, tool), leaf), leaf) or {}).get("level") == "inspect_args"
+            if b or inspect:
+                caught += 1
+            else:
+                missed += 1
+                manques.append("%s/%s" % (service, tool))
+        else:
+            if b:
+                noisy += 1
+                bruits.append("%s/%s -> %s" % (service, tool, b.tier))
+            else:
+                clean += 1
+    total_d = caught + missed
+    total_a = clean + noisy
+    taux = 100 * caught // max(1, total_d)
+    faux = 100 * noisy // max(1, total_a)
+    print("corpus MCP : %d/%d actions dangereuses vues (%d%%), %d/%d anodines bloquées à tort (%d%%)"
+          % (caught, total_d, taux, noisy, total_a, faux))
+    if manques:
+        print("   non vues :", ", ".join(manques[:12]))
+    if bruits:
+        print("   friction inutile :", ", ".join(bruits[:12]))
+    check("au moins 85 %% des actions dangereuses sont vues (mesuré : %d %%)" % taux, taux >= 85)
+    check("au plus 12 %% de friction inutile (mesuré : %d %%)" % faux, faux <= 12)
+    # cas nommés, ceux qui échappaient totalement avant la v6
+    def tier(tool):
+        b = g.decide_full({"tool_name": tool, "tool_input": {}, "cwd": H, "session_id": "t-v6"})
+        return b.tier if b else None
+    for tool, attendu in [("mcp__cloudflare__r2_bucket_delete", "hard"),
+                          ("mcp__cloudflare__d1_database_delete", "hard"),
+                          ("mcp__neon__delete_postgres_database", "hard"),
+                          ("mcp__atlassian__deleteJiraIssue", "hard"),
+                          ("mcp__vercel__buy_domain", "soft"),
+                          ("mcp__slack__conversations_add_message", "soft"),
+                          ("mcp__neon__revoke_credential", "soft"),
+                          ("mcp__mongodb__drop-database", "hard"),
+                          ("mcp__make__scenarios_deactivate", "soft"),
+                          ("mcp__gmail__trash_message", None),
+                          ("mcp__linear__delete_issue", None),
+                          ("mcp__slack__reactions_remove", None)]:
+        check("%s -> %s" % (tool.split("__")[-1], attendu or "aucune friction"), tier(tool) == attendu)
+    fails = [n for n, ok in checks if not ok]
+    for n in fails:
+        print("V6 FAIL", n)
     return len(fails), len(checks)
 
 

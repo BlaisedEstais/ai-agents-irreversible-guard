@@ -1,0 +1,446 @@
+{
+ "version": 1,
+ "_README": "Reversibilite reelle par service (doc editeur). Lecture : servers -> fingerprints -> rules (1re qui matche = verdict final) -> sinon echelle generique, requalifiee par on_generic (par kind) -> sinon defaults.unknown_destructive. on_generic ne peut rien bloquer que le generique n'ait deja flague. level : halt=BLOQUE | confirm=CONFIRME | ok=PASSE | inspect_args=lire les arguments. window = fenetre de recuperation documentee, obligatoire pour tout ok. A placer dans le dossier du garde-fou (couvert par is_guard_path).",
+ "defaults": {
+  "unknown_service": "generic",
+  "unknown_destructive": "confirm",
+  "_unknown_destructive": "Verbe destructeur sur un objet inconnu, service inconnu : confirm et pas halt. Choix assume : sur-bloquer coute des tokens et de la qualite, et un halt par defaut serait contourne ou desactive au bout d'une semaine."
+ },
+ "servers": {
+  "(?i)(^|_)slack": "slack",
+  "(?i)(^|_)discord": "discord",
+  "(?i)shopify": "shopify",
+  "(?i)(^|_)(github|gh)_": "github",
+  "(?i)(atlassian|jira|confluence)": "atlassian",
+  "(?i)(^|_)linear": "linear",
+  "(?i)stripe": "stripe",
+  "(?i)cloudflare": "cloudflare",
+  "(?i)(^|_)neon": "neon",
+  "(?i)(^|_)make(_|$)|integromat": "make",
+  "(?i)notion": "notion",
+  "(?i)gmail": "gmail",
+  "(?i)qonto": "qonto"
+ },
+ "fingerprints": {
+  "_comment": "Dans Claude Desktop, le serveur s'appelle mcp__7e8f6dfc-c831-...__create_client_invoice : le nom du service n'apparait nulle part. Un outil distinctif suffit a l'identifier. A completer dans cg-config.json (cle 'mcp_server_aliases') quand l'empreinte manque.",
+  "create_multi_transfer_request": "qonto",
+  "notion_fetch": "notion",
+  "trash_message": "gmail",
+  "untrash_thread": "gmail",
+  "trash_file": "gdrive",
+  "scenarios_replay": "make",
+  "r2_bucket_create": "cloudflare",
+  "delete_postgres_database": "neon"
+ },
+ "services": {
+  "notion": {
+   "_note": "L'API Notion ne sait PAS purger : 'delete a block' pose in_trash=true, restaurable en repassant in_trash=false. Corbeille 30 j restaurable par l'agent, puis 30 j de retention support. Le plus gros faux positif possible : le nom crie 'delete', le service ne perd rien.",
+   "_src": "https://developers.notion.com/reference/delete-a-block + https://www.notion.com/help/duplicate-delete-and-restore-content",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "^notion_(delete|update_page|move_pages|duplicate_page|create|update|fetch)",
+     "level": "ok",
+     "window": "30 j (corbeille, l'agent restaure seul) + 30 j support",
+     "kind": "doc"
+    },
+    {
+     "tool": "(?:^|_)send_message_to_session$",
+     "level": "confirm",
+     "kind": "message",
+     "window": "aucune (message a un autre agent/humain)"
+    }
+   ]
+  },
+  "gmail": {
+   "_note": "trash_* = corbeille 30 j, l'agent restaure seul (untrash). messages.delete saute la corbeille et est definitif. Un brouillon supprime n'est PAS dans la corbeille. Un envoi API part immediatement : 'Undo Send' est un delai cote client Gmail, il n'existe pas pour l'API.",
+   "_src": "https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/delete + https://support.google.com/mail/answer/7401",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "^(un)?trash_(message|thread)$",
+     "level": "ok",
+     "window": "30 j, restaurable par l'agent",
+     "kind": "doc"
+    },
+    {
+     "tool": "^(delete|remove)_(message|thread)s?$",
+     "level": "halt",
+     "window": "aucune : saute la corbeille",
+     "kind": "doc"
+    },
+    {
+     "tool": "^delete_draft$",
+     "level": "confirm",
+     "window": "aucune : un brouillon supprime ne va pas dans la corbeille",
+     "kind": "doc"
+    },
+    {
+     "tool": "^(delete|update)_label$",
+     "level": "confirm",
+     "window": "aucune, mais recreable ; le libelle disparait de tous les fils",
+     "kind": "doc"
+    },
+    {
+     "tool": "^(send_message|send_gmail_message|reply|reply_all|forward)$",
+     "level": "confirm",
+     "window": "aucune cote API",
+     "kind": "message"
+    },
+    {
+     "tool": "^manage_gmail_filter$|(?:^|_)filter",
+     "level": "confirm",
+     "window": "regle permanente : agit sur tous les mails futurs",
+     "kind": "access"
+    }
+   ]
+  },
+  "slack": {
+   "_note": "Aucune corbeille, nulle part. 'Deleting a message is permanent' ; supprimer un canal supprime aussi tous ses messages ; files.delete est definitif. L'equivalent reversible documente est ARCHIVER un canal (unarchive existe).",
+   "_src": "https://slack.com/help/articles/202395258 + https://slack.com/help/articles/213185307 + https://docs.slack.dev/reference/methods/files.delete/",
+   "on_generic": {
+    "doc": "halt",
+    "data": "halt",
+    "cloud": "halt"
+   },
+   "rules": [
+    {
+     "tool": "(?:^|_)(archive|unarchive)_?channel|^conversations_(archive|unarchive)$",
+     "level": "ok",
+     "window": "reversible : unarchive",
+     "kind": "doc"
+    },
+    {
+     "tool": "(?:^|_)delete(?:_|$)|_delete$",
+     "level": "halt",
+     "window": "aucune : suppression definitive documentee",
+     "kind": "doc"
+    },
+    {
+     "tool": "(?:^|_)(post_message|add_message|send_dm|schedule)",
+     "level": "confirm",
+     "window": "supprimable, mais lu et notifie entre-temps",
+     "kind": "message"
+    }
+   ]
+  },
+  "discord": {
+   "_note": "'Deleting a guild channel cannot be undone. Use this with caution, as it is impossible to undo this action.' Aucune corbeille, aucun outil de restauration, ni pour un message, ni pour un canal, ni pour un serveur. Nuance ajoutée : un message seul reste en confirmation, seuls canal et serveur sont bloquants.",
+   "_src": "https://docs.discord.com/developers/resources/channel",
+   "on_generic": {
+    "doc": "halt",
+    "data": "halt",
+    "cloud": "halt"
+   },
+   "rules": [
+    {
+     "tool": "^(delete|remove)_(message|reaction)s?$",
+     "level": "confirm",
+     "window": "aucune, mais un seul message",
+     "kind": "doc"
+    },
+    {
+     "tool": "(?:^|_)delete(?:_|$)|_delete$",
+     "level": "halt",
+     "window": "aucune",
+     "kind": "doc"
+    },
+    {
+     "tool": "(?:^|_)(send|create)_message",
+     "level": "confirm",
+     "window": "supprimable, mais deja lu/notifie",
+     "kind": "message"
+    }
+   ]
+  },
+  "shopify": {
+   "_note": "'Product deletion is irreversible. After a product is deleted, it can't be recovered' (emporte variantes, medias, stock, publications) ; une commande annulee ne revient pas ; 'You can't cancel or reverse a refund'. L'alternative documentee est archiver / depublier.",
+   "_src": "https://shopify.dev/docs/api/admin-graphql/latest/mutations/productdelete + https://help.shopify.com/en/manual/fulfillment/managing-orders/refunding-orders",
+   "on_generic": {
+    "doc": "halt",
+    "data": "halt",
+    "money": "halt"
+   },
+   "rules": [
+    {
+     "tool": "(?:^|_)(archive|unpublish|draft)",
+     "level": "ok",
+     "window": "reversible : republier",
+     "kind": "doc"
+    },
+    {
+     "tool": "(?:^|_)(delete|cancel|refund)",
+     "level": "halt",
+     "window": "aucune",
+     "kind": "money"
+    }
+   ]
+  },
+  "github": {
+   "_note": "Depot : 90 j, par le proprietaire, SAUF si le depot avait des forks ; les permissions d'equipe ne sont pas restaurees. Issue : aucune restauration documentee. Branche : bouton 'Restore branch' sur la PR. Fichier : l'historique git garde tout.",
+   "_src": "https://docs.github.com/en/repositories/creating-and-managing-repositories/restoring-a-deleted-repository + https://docs.github.com/en/issues/tracking-your-work-with-issues/administering-issues/deleting-an-issue",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "^delete_(file|branch)$|(?:^|_)(file|branch)_delete$",
+     "level": "ok",
+     "window": "historique git / 'Restore branch' sur la PR",
+     "kind": "doc"
+    },
+    {
+     "tool": "^delete_(repo|repository)$",
+     "level": "confirm",
+     "window": "90 j, proprietaire seulement, sauf reseau de forks",
+     "kind": "repo"
+    },
+    {
+     "tool": "^delete_issue$",
+     "level": "halt",
+     "window": "aucune : suppression definitive, admin/owner seulement",
+     "kind": "doc"
+    },
+    {
+     "tool": "(?:^|_)(ruleset|branch_protection)",
+     "level": "confirm",
+     "window": "reversible, mais ouvre la branche protegee entre-temps",
+     "kind": "access"
+    }
+   ]
+  },
+  "atlassian": {
+   "_note": "Jira Cloud : supprimer un TICKET n'a aucun mecanisme de restauration (seul l'audit log garde trace) ; supprimer un PROJET passe par une corbeille 60 j, mais seul un admin Jira/site restaure. Confluence : archiver est reversible.",
+   "_src": "https://support.atlassian.com/jira-cloud-administration/docs/trash-for-jira-cloud-projects/",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "^(un)?archive_confluence",
+     "level": "ok",
+     "window": "reversible : unarchive",
+     "kind": "doc"
+    },
+    {
+     "tool": "^delete_jira_issue",
+     "level": "halt",
+     "window": "aucune",
+     "kind": "doc"
+    },
+    {
+     "tool": "^delete_(jira|confluence)_(project|space)",
+     "level": "confirm",
+     "window": "60 j, restauration par un admin seulement",
+     "kind": "cloud"
+    },
+    {
+     "tool": "(?:^|_)(execute_destructive|enable_confluence_public_link|remove_confluence_content_permissions)",
+     "level": "confirm",
+     "window": "inconnue : outil generique ou changement d'exposition",
+     "kind": "access"
+    }
+   ]
+  },
+  "linear": {
+   "_note": "'stored in the archives for 30 days, after which they'll be permanently removed' ; Cmd+Z immediat, sinon Archives -> Recently deleted. Idem pour un projet.",
+   "_src": "https://linear.app/docs/delete-archive-issues",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "(?:^|_)delete_(issue|project|comment|attachment|document)s?$",
+     "level": "ok",
+     "window": "30 j, 'Recently deleted', restaurable par l'agent",
+     "kind": "doc"
+    }
+   ]
+  },
+  "stripe": {
+   "_note": "Un remboursement ne s'annule que dans une fenetre tres courte et DEPUIS LE DASHBOARD (jamais par l'API) ; les frais ne sont pas rendus. 'You can't reactivate a canceled subscription'. 'Permanently deletes a customer. It cannot be undone' + annule ses abonnements. stripe_api_write est un outil fourre-tout : le nom ne dit rien, il faut lire les arguments.",
+   "_src": "https://docs.stripe.com/refunds + https://docs.stripe.com/billing/subscriptions/cancel + https://docs.stripe.com/api/customers/delete",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "^(stripe_api_read|stripe_analytics|create_payment_link|send_stripe_feedback)$",
+     "level": "ok",
+     "window": "lecture seule ou sans effet financier",
+     "kind": "doc"
+    },
+    {
+     "tool": "^stripe_api_write$",
+     "level": "inspect_args",
+     "window": "depend de l'appel : porte remboursements, payouts et transferts sortants",
+     "kind": "money"
+    },
+    {
+     "tool": "(?:^|_)(refund|payout|transfer)",
+     "level": "halt",
+     "window": "aucune sans l'accord de la contrepartie",
+     "kind": "money"
+    },
+    {
+     "tool": "^cancel_subscription$",
+     "level": "halt",
+     "window": "aucune : il faut recreer un abonnement",
+     "kind": "money"
+    },
+    {
+     "tool": "^delete_customer$",
+     "level": "halt",
+     "window": "aucune",
+     "kind": "cloud"
+    },
+    {
+     "tool": "^finalize_invoice$",
+     "level": "confirm",
+     "window": "une facture finalisee ne se modifie plus",
+     "kind": "money"
+    }
+   ]
+  },
+  "cloudflare": {
+   "_note": "R2 : 'Emptying a bucket is irreversible. All objects in the bucket are permanently deleted' (+ perte des lifecycle rules, CORS, domaines custom). DNS : 'Cloudflare support is unable to restore DNS or settings for deleted domains'. Worker supprime : pas de doc de recuperation (le rollback n'existe que pour un Worker vivant). D1 : Time Travel 30 j (7 j gratuit) mais la restauration ECRASE la base en place, et rien n'est documente apres suppression de la base.",
+   "_src": "https://developers.cloudflare.com/r2/buckets/delete-buckets/ + https://developers.cloudflare.com/dns/zone-setups/troubleshooting/domain-deleted/ + https://developers.cloudflare.com/d1/reference/time-travel/",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "(?:^|_)(r2_bucket|d1_database|kv_namespace|hyperdrive_config|zone|dns_record|worker|script)_delete$|^delete_(bucket|database|zone|worker)",
+     "level": "halt",
+     "window": "aucune",
+     "kind": "cloud"
+    },
+    {
+     "tool": "(?:^|_)d1_database_query$|(?:^|_)(run|execute)_sql$",
+     "level": "inspect_args",
+     "window": "Time Travel 30 j payant / 7 j gratuit, la restauration ecrase en place",
+     "kind": "data"
+    },
+    {
+     "tool": "(?:^|_)time_travel",
+     "level": "confirm",
+     "window": "la restauration est elle-meme destructive (ecrasement en place)",
+     "kind": "data"
+    }
+   ]
+  },
+  "neon": {
+   "_note": "Projet : recuperable 7 j (recoverProject). Branche : AUCUNE recuperation documentee (le restore window de 6 h / 1 j couvre les donnees d'une branche vivante, pas une branche supprimee). Neon publie la liste complete de ses outils en JSON non authentifie, readOnlySafe par outil : a utiliser pour generer ce profil plutot que l'ecrire a la main.",
+   "_src": "https://neon.com/docs/reference/api/projects/recover-project + https://neon.com/docs/introduction/restore-window + https://mcp.neon.tech/api/list-tools",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "^delete_project$",
+     "level": "confirm",
+     "window": "7 j (recoverProject)",
+     "kind": "cloud"
+    },
+    {
+     "tool": "^delete_branch$",
+     "level": "halt",
+     "window": "aucune documentee",
+     "kind": "cloud"
+    },
+    {
+     "tool": "^delete_(postgres_database|storage_bucket|storage_objects_by_prefix|snapshot)$",
+     "level": "halt",
+     "window": "aucune documentee",
+     "kind": "cloud"
+    },
+    {
+     "tool": "^(run_sql|run_sql_transaction)$",
+     "level": "inspect_args",
+     "window": "restore window 6 h (gratuit) / 1 j (payant) par defaut",
+     "kind": "data"
+    },
+    {
+     "tool": "^(reset_from_parent|complete_database_migration)$",
+     "level": "confirm",
+     "window": "ecrasement en place",
+     "kind": "data"
+    },
+    {
+     "tool": "^(prepare_database_migration|create_branch|recover_project)$",
+     "level": "ok",
+     "window": "s'execute sur une branche temporaire / est deja la restauration",
+     "kind": "data"
+    }
+   ]
+  },
+  "make": {
+   "_note": "Seuls les SCENARIOS ont une corbeille (30 j, 'Quick restore', + historique de versions 60 j). Organisations, equipes, data stores, connexions, cles, hooks, custom apps : aucune corbeille documentee. Une connexion ou une cle supprimee casse en plus tous les scenarios qui en dependent.",
+   "_src": "https://help.make.com/trash-for-deleting-scenarios-module-renaming-ai-error-explanations-new-ai-models-and-more",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "^data_store_records_delete$",
+     "level": "confirm",
+     "window": "non documentee, mais niveau enregistrement, pas conteneur",
+     "kind": "data"
+    },
+    {
+     "tool": "^scenarios_delete$",
+     "level": "ok",
+     "window": "30 j (Trash + Quick restore)",
+     "kind": "doc"
+    },
+    {
+     "tool": "^folders_delete$",
+     "level": "confirm",
+     "window": "non documentee",
+     "kind": "doc"
+    },
+    {
+     "tool": "^(organizations|teams|data_stores|connections|keys|hooks|custom_apps)_delete$",
+     "level": "halt",
+     "window": "aucune documentee ; casse les scenarios dependants",
+     "kind": "cloud"
+    },
+    {
+     "tool": "^scenarios_(deactivate|activate)$",
+     "level": "confirm",
+     "window": "reversible d'un clic, mais les evenements manques ne reviennent pas",
+     "kind": "cloud"
+    },
+    {
+     "tool": "^(scenarios_run|rpc_execute)$",
+     "level": "inspect_args",
+     "window": "depend de ce que fait le scenario",
+     "kind": "cloud"
+    }
+   ]
+  },
+  "qonto": {
+   "_note": "Compte bancaire : un virement execute ne revient pas. approve_request libere l'argent d'une demande en attente : c'est l'action la plus grave du connecteur, et son nom ne contient ni transfer ni pay. create_payment_link ne deplace rien.",
+   "_src": "https://api-doc.qonto.com/",
+   "on_generic": {},
+   "rules": [
+    {
+     "tool": "^(create_multi_transfer_request|approve_request)$",
+     "level": "halt",
+     "window": "aucune une fois execute",
+     "kind": "money"
+    },
+    {
+     "tool": "^(send_client_invoice|send_quote)$",
+     "level": "confirm",
+     "window": "aucune : part chez le client",
+     "kind": "message"
+    },
+    {
+     "tool": "^delete_(client_invoice|quote|client)$",
+     "level": "confirm",
+     "window": "non documentee ; piece comptable",
+     "kind": "doc"
+    },
+    {
+     "tool": "^(create_payment_link|mark_client_invoice_as_paid|create_credit_note)$",
+     "level": "ok",
+     "window": "sans mouvement d'argent",
+     "kind": "money"
+    },
+    {
+     "tool": "^(decline_request|change_card_status)$",
+     "level": "confirm",
+     "window": "reversible, mais bloque un paiement ou une carte en prod",
+     "kind": "money"
+    }
+   ]
+  }
+ }
+}

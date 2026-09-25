@@ -6,6 +6,18 @@ The direction of travel is worth stating: after v3, every release **removed** fr
 
 ---
 
+## [Unreleased] — MCP coverage
+
+- Tool names are now normalised (camelCase, dashes, server prefix) and read as **verb + object in either order**,
+  so `r2_bucket_delete`, `delete_storage_bucket` and `deleteJiraIssue` are all classified. Measured on a corpus of
+  232 real tools from ~40 services: **92 % of dangerous actions seen, against 20 % before**, for +1.3 hook calls
+  per day.
+- New `src/mcp-profiles.json`: per-service recovery windows, sourced from vendor documentation, with the last word
+  over the generic rules.
+- New tiers: `access` (secrets, permissions, permanent rules) and `public` (sharing, publishing, visibility).
+- Drafts, templates, views, calendar events and micro-objects (reactions, labels, pins) are explicitly exempt.
+- A money transfer request now stops at 🛑 instead of ⚠️.
+
 ## [Unreleased] — first public release
 
 - **The engine is now generic.** Everything machine-specific — protected paths, unlock phrase, scratch roots, exempt tool prefixes — moved out of the code into a `cg-config.json` read at start-up (`$CG_CONFIG`, then `~/.claude/hooks/cg-config.json`, then next to the engine). Without a config the guard still runs on conservative generic defaults.

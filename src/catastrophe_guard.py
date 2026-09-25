@@ -1465,6 +1465,213 @@ def analyze_text(text, ctx):
 
 # --------------------------------------------------------------------------- tool dispatch
 
+# ---------------------------------------------------------------------------------------------------------
+# Classement des outils MCP. Un nom d'outil se lit verbe + objet, dans un ordre ou dans l'autre
+# (delete_storage_bucket / r2_bucket_delete / deleteJiraIssue), avec des séparateurs variables. On normalise
+# d'abord, on classe ensuite : c'est l'OBJET qui décide du niveau, jamais le verbe seul (« delete » vaut aussi
+# bien pour une base de données que pour un brouillon).
+def mcp_parts(tool):
+    """'mcp__srv__deleteJiraIssue' -> ('srv', 'delete_jira_issue')."""
+    parts = tool.split("__")
+    leaf = parts[-1] if len(parts) > 1 else tool
+    server = "__".join(parts[1:-1]).lower()
+    t = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", leaf)
+    t = re.sub(r"[^A-Za-z0-9]+", "_", t).lower()
+    return server, re.sub(r"_+", "_", t).strip("_")
+
+
+def _W(x):
+    return r"(?:^|_)" + x + r"(?:e?s)?(?=_|$)"          # frontière droite en lookahead : « delete_file » matche
+
+
+def _VO(v, o):
+    return _W(v) + r"\w*" + _W(o)                       # verbe puis objet
+
+
+def _OV(o, v):
+    return _W(o) + r"\w*" + _W(v)                       # objet puis verbe
+
+
+def _R(*parts):
+    return re.compile("|".join(parts))
+
+
+V_DEL = r"(?:delete|del|drop|destroy|purge|remove|erase|wipe|terminate|teardown|expunge)"
+# Objets dont la suppression ne revient jamais.
+O_PERM = (r"(?:database|db|datastore|data_store|bucket|blob_container|namespace|zone|dns|record_set|"
+          r"worker|volume|disk|cluster|deployment|instance|snapshot|backup|environment|secret_store|"
+          r"stream|topic|queue)")
+# Conteneurs : récupérables parfois, coûteux toujours.
+O_CONT = (r"(?:project|repo|repository|organization|organisation|org|account|workspace|team|space|store|site|"
+          r"scenario|connection|integration|hook|webhook|key|api_key|credential|custom_app|app|pipeline|"
+          r"automation|zap|flow|board|base|collection|index|bot|agent|monitor)")
+# Documents et enregistrements : corbeille ou historique chez tous les services grand public.
+O_DOC = (r"(?:document|doc|page|block|file|folder|table|table_column|column|field|view|record|row|item|entry|"
+         r"issue|ticket|task|card|list|comment|attachment|note|event|milestone|client|customer|contact|"
+         r"invoice|quote|product|category|session|variable|message|channel)")
+O_ACC = (r"(?:member|membership|user|collaborator|guest|seat|invite|invitation|role|permission|access|grant|"
+         r"acl|ruleset|branch_protection|policy)")
+# Micro-objets : personne ne pleure un emoji retiré.
+O_MICRO = (r"(?:reaction|emoji|star|pin|bookmark|flag|watcher|follower|assignee|notification|reminder|"
+           r"read_state|label|tag|cache|temp|tmp|log|preview|cookie|selection|filter_view|background|"
+           r"view|draft|template)")
+# Filets de sécurité : les couper est réversible d'un clic, mais ce qui arrive ensuite ne l'est pas.
+O_SAFE = (r"(?:scenario|automation|zap|workflow|monitor|alert|backup|job|cron|scheduled_task|schedule|guard|"
+          r"hook|rule|policy|protection)")
+
+MCP_SAFEGUARD_OFF = _R(_VO(r"(?:deactivate|disable|pause|suspend|stop|turn_off|archive|delete|remove)", O_SAFE),
+                       _OV(O_SAFE, r"(?:deactivate|disable|pause|suspend|stop|turn_off)"))
+MCP_EXEMPT_VETO = _R(_W(r"(?:empty|purge|permanent|permanently|forever|hard|expunge|shred|immediately)"))
+MCP_EXEMPT = _R(r"^(?:un)?(?:trash|archive|deactivate|close|hide|unpublish|mute|snooze|suspend|pause)(?:_|$)",
+                r"^(?:force_terminate|kill_process|stop_process|stop_search|close_tab|clear_session|clear_cache)$",
+                r"^(?:unarchive|untrash|undelete|reopen|resume|recover|restore_project|restore_record)",
+                r"^(?:mark|unmark|label|unlabel|dismiss|resolve|read|get|list|search|fetch|describe|preview|find)(?:_|$)",
+                _W(r"(?:to_trash|from_trash|payment_link|payment_method|payment_term)"),
+                _VO(V_DEL, O_MICRO), _OV(O_MICRO, V_DEL),
+                _VO(V_DEL, r"(?:draft|template|preview|test|sample|event)"))
+MCP_SQL = _R(r"(?:^|_)(?:run|execute|exec|write|read|apply|query)_?(?:sql|query|statement|transaction)s?(?=_|$)",
+             r"^sql_db_", r"^query$", _W(r"(?:database|db|table)_query"), _W(r"query_(?:database|db|table)"),
+             r"^(?!prepare_)\w*(?:apply|run|execute)_\w*migration")
+MCP_MONEY_REQUEST = _R(r"^create_\w*request", _W(r"request_(?:transfer|payout|payment)"))
+MCP_MONEY_HARD = _R(_W(r"(?:refund|payout|chargeback|reversal|withdrawal)"),
+                    _VO(r"(?:create|issue|send|initiate|make|request|execute)", r"(?:refund|payout|transfer|wire)"),
+                    _W(r"(?:transfer|withdraw|wire)"), r"^(?:pay|payout|refund|transfer)$",
+                    _VO(r"approve", r"(?:request|transfer|payment|payout|invoice)"),
+                    r"(?:^|_)create_payment(?!_link|_method|_term)\w*(?=_|$)")
+MCP_MONEY_SOFT = _R(_W(r"(?:payment|charge|subscription|order|purchase|checkout|billing|invoice_send)"),
+                    _VO(r"(?:buy|purchase|order|checkout)", r"\w+"), r"^(?:buy|purchase)_",
+                    _VO(r"(?:cancel|void|finalize|close)", r"(?:subscription|order|plan|invoice|payment|period|contract)"))
+MCP_SEND_NEW = _R(r"^(?:send|reply|forward|reply_all)(?:_|$)", _W(r"(?:send|reply|forward|notify)"),
+                  r"^(?:post|create|add|schedule|send)_(?:message|dm|email|mail|sms|whatsapp|post|tweet|invite|invitation)s?$",
+                  _W(r"(?:add_message|post_message|send_message|create_message|schedule_message)"),
+                  _OV(r"(?:message|conversation|chat|thread|post|dm)", r"(?:schedule|send|post|add|create|broadcast)"),
+                  r"^(?:create|update|invite)_(?:event|attendee|guest)s?$")
+MCP_SEND_VETO = _R(_W(r"(?:feedback|draft|test|preview|template|self|sample)"), r"^(?:get|list|search|read)_")
+MCP_PUBLIC = _R(r"^(?:share|publish|deploy|expose)(?:_|$)", _W(r"(?:share|publish|deploy|make_public)"),
+                _VO(r"(?:set|update|change)", r"(?:visibility|sharing)"), _W(r"visibility"),
+                r"(?:^|_)public_(?:link|access|url|share)(?=_|$)",
+                _VO(r"enable", r"(?:public_link|public_access|anonymous_access)"))
+MCP_PERM_NEW = _R(_VO(V_DEL, O_PERM), _OV(O_PERM, V_DEL),
+                  _VO(r"(?:empty|flush|truncate|clear)", r"(?:bucket|database|db|volume|trash|recycle_bin)"),
+                  _W(r"(?:empty_recycle_bin|empty_trash|drop_database|drop_schema)"))
+MCP_ACCESS = _R(_VO(r"(?:revoke|rotate|reset|disable|delete|remove)",
+                    r"(?:credential|token|key|secret|auth|mfa|2fa|sso|password|certificate)"),
+                _W(r"(?:revoke|rotate)"), _VO(V_DEL, O_ACC), _OV(O_ACC, V_DEL),
+                _VO(r"(?:set|update|replace|grant|add|create|manage)", r"(?:permission|acl|ruleset|role|policy)"),
+                _VO(r"(?:manage|create|update|set|delete|remove)",
+                    r"(?:filter|rule|forwarding|auto_reply|vacation|webhook|trigger)"),
+                _VO(r"(?:disable|delete)", r"(?:auth|mfa|2fa|sso|protection|audit|logging|backup)"))
+MCP_OVERWRITE = _R(r"^(?:reset|restore|rollback|revert|replay|overwrite)(?:_|$)",
+                   _W(r"(?:reset|rollback|revert|replay|overwrite|force_push|hard_reset|reset_from_parent|time_travel)"),
+                   _W(r"(?:merge|rebase|squash)"), _W(r"(?:truncate|bulk_write)"),
+                   _VO(r"(?:clear|flush|empty|wipe|truncate)",
+                       r"(?:table|data|record|row|all|database|collection|index|history|queue)"),
+                   r"(?:^|_)(?:update|delete|upsert|replace)[-_]?many(?=_|$)",
+                   r"(?:^|_)(?:bulk|batch)_(?:update|delete|write|upsert)",
+                   _W(r"kubectl_(?:apply|replace|patch|drain|cordon|rollout|scale)"),
+                   _VO(r"(?:drop|truncate)", r"(?:table|collection|index|schema|view|partition)"),
+                   _VO(r"(?:complete|apply|run)", r"migration"))
+MCP_CONTAINER = _R(_VO(V_DEL, O_CONT), _OV(O_CONT, V_DEL), _W(r"destructive"))
+MCP_DOC_NEW = _R(_VO(V_DEL, O_DOC), _OV(O_DOC, V_DEL))
+# Une ligne, un objet, une entrée : ce n'est pas le conteneur qui la porte.
+MCP_RECORD_VETO = _R(_W(r"(?:record|row|item|entry|object|value|document|message|comment|attachment|member|reaction)"),
+                     r"(?:^|_)(?:records|rows|items|entries|objects|values)_")
+MCP_DEL_ANY = _R(_W(V_DEL))
+
+# (niveau, genre, raison) dans l'ordre d'évaluation ; « sql » est un cas à part : on lit les arguments.
+MCP_LADDER = [
+    ("sql", MCP_SQL, None, None),
+    ("money", MCP_MONEY_HARD, "hard", "mouvement d'argent sans retour (%s)"),
+    ("money", MCP_MONEY_SOFT, "soft", "engagement d'argent (%s)"),
+    ("message", MCP_SEND_NEW, "soft", "envoi vers un destinataire humain (%s)"),
+    ("public", MCP_PUBLIC, "soft", "publication ou partage vers l'extérieur (%s)"),
+    ("cloud", MCP_PERM_NEW, "hard", "suppression définitive d'une ressource cloud (%s)"),
+    ("access", MCP_ACCESS, "soft", "changement d'accès, de secret ou de règle permanente (%s)"),
+    ("data", MCP_OVERWRITE, "soft", "écrasement en place ou opération de masse (%s)"),
+    ("cloud", MCP_CONTAINER, "soft", "suppression d'un conteneur (%s)"),
+    ("doc", MCP_DOC_NEW, "soft", "suppression d'un document ou d'un enregistrement (%s)"),
+    ("cloud", MCP_DEL_ANY, "soft", "verbe destructeur sur un objet inconnu (%s)"),
+]
+
+
+def _load_profiles():
+    """Profils par service : fenêtres de récupération documentées, qui priment sur le classement générique."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for path in (os.environ.get("CG_PROFILES"), os.path.join(HOME, ".claude", "hooks", "mcp-profiles.json"),
+                 os.path.join(here, "mcp-profiles.json")):
+        try:
+            if path and os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+PROFILES = _load_profiles()
+
+
+def mcp_service(tool, leaf):
+    """Nom du service derrière un outil. Dans Claude Desktop le serveur est un identifiant opaque : on se rabat
+    alors sur une empreinte, c'est-à-dire un nom d'outil que seul ce service expose."""
+    for pat, name in (PROFILES.get("servers") or {}).items():
+        try:
+            if re.search(pat, tool):
+                return name
+        except re.error:
+            pass
+    fp = PROFILES.get("fingerprints") or {}
+    return fp.get(leaf) or (CONF.get("mcp_server_aliases") or {}).get(tool.split("__")[1] if "__" in tool else "")
+
+
+def mcp_profile_rule(service, leaf):
+    svc = (PROFILES.get("services") or {}).get(service or "")
+    for rule in (svc or {}).get("rules") or []:
+        try:
+            if re.search(rule.get("tool", r"(?!)"), leaf):
+                return rule
+        except re.error:
+            pass
+    return None
+
+
+def check_mcp_tool(tool, ti, ctx):
+    """Classe un outil MCP inconnu : profil du service d'abord, échelle générique ensuite."""
+    server, leaf = mcp_parts(tool)
+    service = mcp_service(tool, leaf)
+    rule = mcp_profile_rule(service, leaf)
+    if rule:
+        lvl, kind = rule.get("level"), rule.get("kind") or "cloud"
+        win = (" — %s" % rule["window"]) if rule.get("window") else ""
+        if lvl == "ok":
+            return
+        if lvl == "inspect_args":
+            check_sql_text(json.dumps(ti, ensure_ascii=False))
+            return
+        if lvl in ("halt", "confirm"):
+            block("%s via %s%s" % (rule.get("reason") or "action sensible", tool, win),
+                  "hard" if lvl == "halt" else "soft", kind)
+            return
+    if MCP_SAFEGUARD_OFF.search(leaf):
+        block("désactivation d'un filet de sécurité (%s)" % tool, "soft", "cloud")
+    if MCP_EXEMPT.search(leaf) and not MCP_EXEMPT_VETO.search(leaf):
+        return
+    for kind, rx, tier, reason in MCP_LADDER:
+        if not rx.search(leaf):
+            continue
+        if kind == "sql":
+            check_sql_text(json.dumps(ti, ensure_ascii=False))
+            return
+        if kind == "message" and MCP_SEND_VETO.search(leaf):
+            continue
+        if kind == "money" and tier == "hard" and MCP_MONEY_REQUEST.search(leaf):
+            block("demande de mouvement d'argent, à valider dans l'app (%s)" % tool, "soft", "money")
+        if kind in ("cloud",) and tier == "hard" and MCP_RECORD_VETO.search(leaf):
+            block("suppression d'un document ou d'un enregistrement (%s)" % tool, "soft", "doc")
+        block(reason % tool, tier, kind)
+    return
+
+
 # Conteneurs : suppression rarement récupérable en self-service -> ⚠️ avec checklist « cloud ».
 MCP_DESTRUCTIVE = re.compile(
     r"__(organizations|teams|data-stores|scenarios|keys|custom-apps|connections|hooks|tools)_delete$"
@@ -1649,16 +1856,10 @@ def evaluate(data):
         elif low.endswith("__table_rows_delete") and ((ti.get("data") or {}).get("action") == "delete_all" or
                                                        len((ti.get("data") or {}).get("rowNumbersOrIds") or []) > 50):
             block("suppression en masse de lignes (%s)" % tool, "soft", "data")
-        elif MCP_SEND.search(low) and not re.search(MCP_SEND_EXEMPT, low):  # messages d'agent à agent
-            block("envoi d'un message (%s)" % tool, "soft", "message")
-        elif MCP_MONEY.search(low):
-            block("mouvement d'argent (%s)" % tool, "soft", "money")
-        elif MCP_DELETE_PERMANENT.search(low):
-            block("suppression définitive d'une ressource cloud (%s)" % tool, "hard", "cloud")
-        elif MCP_DELETE_DOC.search(low):
-            block("suppression d'un document ou d'un enregistrement (%s)" % tool, "soft", "doc")
-        elif MCP_DESTRUCTIVE.search(low):
-            block("outil MCP destructif %s" % tool, "soft", "cloud")
+        elif re.search(MCP_SEND_EXEMPT, low):    # d'agent à agent : ce n'est pas un envoi vers un humain
+            pass
+        else:
+            check_mcp_tool(tool, ti, ctx)
 
 
 # --------------------------------------------------------------------------- unlock
@@ -1848,6 +2049,10 @@ CHECKS = {
     "message": ["Les destinataires exacts sont vérifiés.",
                 "Aucun secret, donnée perso ou pièce jointe non voulue ; le contenu est relu."],
     "money": ["Montant, bénéficiaire et IBAN sont vérifiés sur une source sûre (pas une facture ou un email reçu)."],
+    "access": ["Ce changement d'accès ou de secret est bien celui demandé, et tu sais qui ou quoi en dépend.",
+               "Tu peux le remettre en place (ancienne valeur notée, règle réversible) — sinon, dis-le avant."],
+    "public": ["Ce qui devient visible ne contient ni secret, ni donnée personnelle, ni brouillon.",
+               "Le bon périmètre est choisi (un lien, pas tout l'espace), et ça se retire sans casse."],
     "doc": ["C'est le bon objet : bon doc, bonne page, bon enregistrement (pas un homonyme, pas le parent).",
             "Ce n'est pas une suppression groupée au mauvais endroit, et c'est récupérable (corbeille ou historique "
             "du service) ou sans valeur."],

@@ -23,7 +23,7 @@ done
 GUARD_SRC="$SRC/src" "$PY" -B "$SRC/tests/test_guard.py"
 
 mkdir -p "$DST"
-for f in catastrophe_guard.py catastrophe_guard.sh cg-prefilter.sh cg-zsh cg-ack.sh; do
+for f in catastrophe_guard.py catastrophe_guard.sh cg-prefilter.sh cg-zsh cg-ack.sh mcp-profiles.json; do
   cp "$SRC/src/$f" "$DST/$f"
 done
 # Réglages propres à ce poste (chemins personnels, mot de déblocage) : jamais publiés, jamais dans le dépôt public.
