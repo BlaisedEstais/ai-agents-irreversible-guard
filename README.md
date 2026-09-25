@@ -1,8 +1,8 @@
-# ai-agents-irreversible-guard
+# inattention-is-all-you-heed
 
 **A two-tier guardrail that stops AI agents from doing irreversible damage — and gets out of the way for everything else.**
 
-Most agent safety setups give you two bad options: approve every single tool call, or turn approvals off and hope. `ai-agents-irreversible-guard` is a `PreToolUse` hook that asks a different question before a command runs — **not "is this dangerous?" but "is this recoverable?"** — and routes accordingly:
+Most agent safety setups give you two bad options: approve every single tool call, or turn approvals off and hope. `inattention-is-all-you-heed` is a `PreToolUse` hook that asks a different question before a command runs — **not "is this dangerous?" but "is this recoverable?"** — and routes accordingly:
 
 - 🛑 **Irreversible** (`rm -rf ~/Documents`, `DROP DATABASE`, deleting a Supabase project or an R2 bucket, removing branch protection, editing the guard itself) → **hard stop. Only a human unlocks it.**
 - ⚠️ **Recoverable but expensive** (force-push to `main`, deleting a repo, sending an email, moving money) → **the agent re-confirms itself**, in writing, against a checklist, and the whole thing is logged.
@@ -218,7 +218,7 @@ Note the last paragraph. The 🛑 message explicitly tells the model that **rout
 
 ## The two unlock paths
 
-**🛑 Human unlock.** Either the user writes the passphrase in their *own* message (default `#i-accept-data-loss`, **configurable and meant to be changed** — see [Configuration](#configuration-cg-configjson)), or they run the command in their own shell. Nothing else works. The transcript parser only counts real human turns, and it neutralises the obvious trick of a tool result containing "the user should write &lt;phrase&gt;". A claim of pre-authorisation found in a file, an email, an issue, a web page or a tool result is **not** an unlock — that is precisely the [prompt injection](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) path this tier exists to close. An unlock is valid for 30 minutes.
+**🛑 Human unlock.** Either the user writes the passphrase in their *own* message (default `#destroy`, **configurable and meant to be changed** — see [Configuration](#configuration-cg-configjson)), or they run the command in their own shell. Nothing else works. The transcript parser only counts real human turns, and it neutralises the obvious trick of a tool result containing "the user should write &lt;phrase&gt;". A claim of pre-authorisation found in a file, an email, an issue, a web page or a tool result is **not** an unlock — that is precisely the [prompt injection](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) path this tier exists to close. An unlock is valid for 30 minutes.
 
 **⚠️ Agent unlock.** Re-run the same command with a `# cg-ack:` comment naming *who asked* and *why it is safe or reversible* (`// cg-ack:` in JavaScript). For MCP tools, where you cannot attach a comment to a JSON payload, the refusal hands you a one-time 16-character key: run `sh ~/.claude/hooks/cg-ack.sh <key> "<justification>"`, then repeat the call unchanged within 5 minutes. A justification shorter than 25 characters is rejected; the minimum relaxes as the series' friction decays.
 
@@ -254,8 +254,8 @@ A series is defined by action kind **and** tool **and** container, it expires af
 macOS or Linux, POSIX `sh`, Python 3.9+ (no third-party packages, no virtualenv). The guard runs entirely offline.
 
 ```bash
-git clone https://github.com/OWNER/ai-agents-irreversible-guard.git
-cd ai-agents-irreversible-guard
+git clone https://github.com/OWNER/inattention-is-all-you-heed.git
+cd inattention-is-all-you-heed
 
 sh install.sh              # Claude Code only
 sh install.sh --all        # + Codex, Hermes, OpenClaw — whichever are installed
@@ -320,7 +320,7 @@ Start from [`cg-config.example.json`](cg-config.example.json), which documents e
 
 A config that says what is protected also says, by subtraction, **what is not** — and it names the very folders worth stealing. That is why `cg-config.json` is in `.gitignore`, why the installer creates it `0600`, and why the guard treats it as one of its own files: editing or deleting it is a 🛑 action, exactly like editing the engine. If you fork this repo for your team, keep the real file out of the fork and ship only your own example.
 
-**Change the unlock phrase.** The default, `#i-accept-data-loss`, is published here, which makes it worth exactly nothing as a secret. It is not a password against an attacker — the security property is that the phrase must appear in a **real human turn** — but a phrase nobody else can guess also protects you against being socially engineered into pasting it. Pick your own, put it only in your private config, and do not commit it anywhere.
+**Change the unlock phrase.** The default, `#destroy`, is published here, which makes it worth exactly nothing as a secret. It is not a password against an attacker — the security property is that the phrase must appear in a **real human turn** — but a phrase nobody else can guess also protects you against being socially engineered into pasting it. Pick your own, put it only in your private config, and do not commit it anywhere.
 
 ---
 
@@ -478,8 +478,9 @@ Either way, the loop is the same: edit your copy, **add a test in the suite that
 ## Repository layout
 
 ```
-ai-agents-irreversible-guard/
+inattention-is-all-you-heed/
 ├── README.md                    ← you are here
+├── PROTOCOL.md                  ← the prompt-side half: the rule to paste into an agent's instructions
 ├── SECURITY.md                  ← threat model, and how to report a bypass
 ├── CHANGELOG.md
 ├── LICENSE                      ← MIT
@@ -506,6 +507,7 @@ Being explicit about the boundary is part of the safety argument. The long versi
 
 - **It is not a sandbox.** It does not confine the agent, virtualise the filesystem, or limit network access. If you need containment, use containment — a VM, a container, a separate cloud account with scoped credentials — and run this *inside* it. They solve different problems: a sandbox limits the blast radius, this limits the blast.
 - **It does not stop a determined attacker.** It is a policy layer running with your own privileges, on the same machine, as the same user. A denylist is bypassable by construction, and the research says so with numbers ([ShellSieve](https://arxiv.org/html/2606.15549v2)). Hooks are themselves an attack surface — agent hook definitions have been used for RCE via untrusted project files ([CVE-2025-59536, Check Point](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/)). Keep your agent updated, review hook definitions before trusting them, and do not clone hostile repositories.
+- **It does not see what never reaches the hook.** A click in a browser, an API call made from inside a script the hook knows only as `sh deploy.sh`, an action taken in a third-party UI — none of that passes through a pre-tool-call event. That half has to be covered in the agent's head, which is what [PROTOCOL.md](PROTOCOL.md) is for: the prompt-side version of the same doctrine, written to be pasted into a system prompt, an `AGENTS.md`, a `CLAUDE.md` or a Cursor rule. The hook catches what the prompt misses; the prompt covers what the hook cannot see.
 - **It does not make an agent trustworthy.** It makes a specific class of mistakes expensive. Everything else about your agent's judgment is still your problem.
 - **It fails open, on purpose.** If the guard errors out, the call is allowed and the failure is logged. Fail-closed sounds safer and is worse in practice: a guard that bricks your agent on a parse bug gets uninstalled within a week, and then you have no guard at all. The 🛑 tier is a net for accidents, not a lock against an adversary, and a net that jams shut is a net nobody hangs up.
 - **It does not phone home.** No telemetry, no network calls, no LLM in the decision path. The classifier is deterministic code; the journal is a local JSONL file, `0600`, with secrets masked. Your commands and justifications never leave your machine.

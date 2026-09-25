@@ -59,7 +59,7 @@ def conf_paths(key, default=()):
     return out
 
 
-UNLOCK = conf("unlock_phrase", "#i-accept-data-loss")  # valeur par défaut ; chacun met la sienne dans cg-config.json
+UNLOCK = conf("unlock_phrase", "#destroy")  # valeur par défaut ; chacun met la sienne dans cg-config.json
 LOG = os.environ.get("CG_LOG") or os.path.join(HOME, ".claude", "hooks", "catastrophe_guard.log")
 GUARD_MARK = "catastrophe_guard"
 
