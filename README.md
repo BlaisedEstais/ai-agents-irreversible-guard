@@ -1,7 +1,7 @@
 # inattention-is-all-you-heed
 ## *The "*⚠️* Are you sure?" popup for AI agents.*
 
-**Every app you use pops up *"Are you sure?"* before something final. AI agents don't get that popup — they just run the command. This is the missing popup, and it only fires when the action genuinely cannot be undone.**
+**All app have *"Are you sure?"* popups for humans, to confirm before irreversible changes – like permanently deleting something or confirm sending a message. AI agents don't get that popup — they just run the CLI or MCP command. This tool brings the missing popup, so that AI agent don't do errors that can't be undone.**
 
 ![A user asks an agent to clean things up. Three commands follow: deleting a build folder runs untouched; deleting a repository makes the agent confirm in writing and proceed; an API call that permanently deletes a file, bypassing the trash, is stopped and the agent goes back to the documentation.](docs/how-it-works.png)
 
