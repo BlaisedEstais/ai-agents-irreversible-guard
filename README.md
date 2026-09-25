@@ -1,5 +1,5 @@
 # inattention-is-all-you-heed
-## __The "Are you sure?" popup for AI agents.__
+## *The "Are you (real) sure?" popup for AI agents!*
 
 **Every app you use pops up *"Are you sure?"* before something final. AI agents don't get that popup — they just run the command. This is the missing popup, and it only fires when the action genuinely cannot be undone.**
 
