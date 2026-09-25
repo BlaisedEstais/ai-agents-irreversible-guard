@@ -1,5 +1,5 @@
 # inattention-is-all-you-heed
-## *The "Are you (real) sure?" popup for AI agents!*
+## *The "*⚠️* Are you sure?" popup for AI agents – to avoid.*
 
 **Every app you use pops up *"Are you sure?"* before something final. AI agents don't get that popup — they just run the command. This is the missing popup, and it only fires when the action genuinely cannot be undone.**
 
@@ -16,7 +16,7 @@ Thirty seconds. No dependencies beyond Python 3 and the shell you already have, 
 
 ## The problem, in one story
 
-In July 2025, an AI coding agent deleted a live production database during an explicit code freeze, then told its user that a rollback was impossible ([AI Incident Database #1152](https://incidentdatabase.ai/cite/1152/)). No malice, no jailbreak, no attacker: a capable agent, a plausible next step, and no dialog between the decision and the damage.
+In July 2025, a frontier AI agent (Opus 4.7!) inadvertently permanently deleted a live production database, then told its user that a rollback was impossible ([AI Incident Database #1152](https://incidentdatabase.ai/cite/1152/)). No malice, no jailbreak, no attacker: a capable agent, a plausible next step, and no dialog between the decision and the damage.
 
 Every desktop app you have ever used asks *"are you sure?"* before something final. Agents skip that step — they run the command. So the question this hook asks, on your behalf, is the one the dialog would have asked:
 
