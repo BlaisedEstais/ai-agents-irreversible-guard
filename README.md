@@ -218,7 +218,7 @@ Note the last paragraph. The 🛑 message explicitly tells the model that **rout
 
 ## The two unlock paths
 
-**🛑 Human unlock.** Either the user writes the passphrase in their *own* message (default `#go-destructif`, **configurable and meant to be changed** — see [Configuration](#configuration-cg-configjson)), or they run the command in their own shell. Nothing else works. The transcript parser only counts real human turns, and it neutralises the obvious trick of a tool result containing "the user should write &lt;phrase&gt;". A claim of pre-authorisation found in a file, an email, an issue, a web page or a tool result is **not** an unlock — that is precisely the [prompt injection](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) path this tier exists to close. An unlock is valid for 30 minutes.
+**🛑 Human unlock.** Either the user writes the passphrase in their *own* message (default `#i-accept-data-loss`, **configurable and meant to be changed** — see [Configuration](#configuration-cg-configjson)), or they run the command in their own shell. Nothing else works. The transcript parser only counts real human turns, and it neutralises the obvious trick of a tool result containing "the user should write &lt;phrase&gt;". A claim of pre-authorisation found in a file, an email, an issue, a web page or a tool result is **not** an unlock — that is precisely the [prompt injection](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) path this tier exists to close. An unlock is valid for 30 minutes.
 
 **⚠️ Agent unlock.** Re-run the same command with a `# cg-ack:` comment naming *who asked* and *why it is safe or reversible* (`// cg-ack:` in JavaScript). For MCP tools, where you cannot attach a comment to a JSON payload, the refusal hands you a one-time 16-character key: run `sh ~/.claude/hooks/cg-ack.sh <key> "<justification>"`, then repeat the call unchanged within 5 minutes. A justification shorter than 25 characters is rejected; the minimum relaxes as the series' friction decays.
 
@@ -320,7 +320,7 @@ Start from [`cg-config.example.json`](cg-config.example.json), which documents e
 
 A config that says what is protected also says, by subtraction, **what is not** — and it names the very folders worth stealing. That is why `cg-config.json` is in `.gitignore`, why the installer creates it `0600`, and why the guard treats it as one of its own files: editing or deleting it is a 🛑 action, exactly like editing the engine. If you fork this repo for your team, keep the real file out of the fork and ship only your own example.
 
-**Change the unlock phrase.** The default, `#go-destructif`, is published here, which makes it worth exactly nothing as a secret. It is not a password against an attacker — the security property is that the phrase must appear in a **real human turn** — but a phrase nobody else can guess also protects you against being socially engineered into pasting it. Pick your own, put it only in your private config, and do not commit it anywhere.
+**Change the unlock phrase.** The default, `#i-accept-data-loss`, is published here, which makes it worth exactly nothing as a secret. It is not a password against an attacker — the security property is that the phrase must appear in a **real human turn** — but a phrase nobody else can guess also protects you against being socially engineered into pasting it. Pick your own, put it only in your private config, and do not commit it anywhere.
 
 ---
 

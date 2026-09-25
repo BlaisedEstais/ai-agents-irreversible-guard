@@ -5,8 +5,8 @@
 
   "_comment": "Example values - replace them with yours. Any key starting with _ is free text for your own future self and is ignored by the engine.",
 
-  "_unlock_phrase": "The literal string a HUMAN must type in their own message to unlock a 🛑 action. Change it: the default is published, and a phrase nobody can guess also protects you from being talked into pasting it. Default: \"#go-destructif\".",
-  "unlock_phrase": "#go-destructif",
+  "_unlock_phrase": "The literal string a HUMAN must type in their own message to unlock a 🛑 action. Change it: the default is published, and a phrase nobody can guess also protects you from being talked into pasting it. Default: \"#i-accept-data-loss\".",
+  "unlock_phrase": "#i-accept-data-loss",
 
   "_extra_critical": "Extra paths whose recursive deletion is catastrophic - yours and their ancestors become 🛑. Add your work folder, your secrets folder, your archives, a mounted backup disk. Default: [] (on top of the built-in list: home, Documents, Desktop, Downloads, Library, .ssh, .gnupg, agent config dirs...).",
   "extra_critical": ["~/Projects", "~/Code", "~/Archives", "/Volumes/BACKUP"],
