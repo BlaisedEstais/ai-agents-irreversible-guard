@@ -1,13 +1,17 @@
 # inattention-is-all-you-heed
 
-**Your AI agent can run `rm -rf`, drop a database or send an email with no confirmation dialog at all. This is that dialog — and it only appears when the action cannot be undone.**
+**Every app you use pops up *"Are you sure?"* before something final. AI agents don't get that popup — they just run the command. This is the missing popup, and it only fires when the action genuinely cannot be undone.**
+
+![A user asks an agent to clean things up. Three commands follow: deleting a build folder runs untouched; deleting a repository makes the agent confirm in writing and proceed; an API call that permanently deletes a file, bypassing the trash, is stopped and the agent goes back to the documentation.](docs/how-it-works.png)
 
 ```sh
 git clone https://github.com/BlaisedEstais/inattention-is-all-you-heed.git
 cd inattention-is-all-you-heed && sh install.sh --all
 ```
 
-Thirty seconds. No dependencies beyond Python 3 and the shell you already have, no account, no network calls, no second model in the loop. It wires itself into Claude Code, Codex, OpenClaw and Desktop Commander in one pass, and starts working on the next tool call.
+Thirty seconds. No dependencies beyond Python 3 and the shell you already have, no account, no network calls, no second model in the loop.
+
+**Works with whatever you already run.** It installs as a pre-tool-call hook into **Claude Code**, **OpenAI Codex**, **OpenClaw** and **Desktop Commander** in one pass — and with any other agent that can run a command before a tool call (one JSON object on stdin, one decision on stdout). It covers **shell commands, MCP tools, inline code and REPLs alike**: deleting through an MCP connector, sending an email, moving money and `rm -rf` all go through the same classifier. What it cannot see — clicks in a browser, a form submitted in someone else's UI — is covered by the [prompt-side protocol](PROTOCOL.md) shipped next to it.
 
 ## The problem, in one story
 

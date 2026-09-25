@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>How it works</title>
+<style>
+  :root {
+    --ink: #10151c; --muted: #667281; --line: #e3e7ec; --bg: #f7f8fa; --card: #ffffff;
+    --ok: #1f9d55; --warn: #b7791f; --stop: #c5341f;
+    --ok-bg: #eaf7ef; --warn-bg: #fdf4e3; --stop-bg: #fdecea;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1120px; padding: 40px 44px 34px; background: var(--bg); color: var(--ink);
+    font: 15px/1.45 -apple-system, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .ask { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+  .ask .who { font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  .bubble {
+    background: var(--ink); color: #fff; padding: 11px 18px; border-radius: 16px 16px 16px 4px;
+    font-size: 16px; font-weight: 500;
+  }
+  .row {
+    display: grid; grid-template-columns: 300px 1fr 150px; gap: 18px; align-items: center;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px; margin-bottom: 12px;
+  }
+  .cmd { font: 13.5px/1.35 ui-monospace, "SF Mono", Menlo, monospace; word-break: break-all; }
+  .sub { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .talk { display: flex; flex-direction: column; gap: 7px; }
+  .line { display: flex; gap: 9px; align-items: baseline; font-size: 14px; }
+  .tag {
+    flex: none; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--muted); width: 54px;
+  }
+  .guard { font-weight: 600; }
+  .verdict {
+    text-align: center; border-radius: 11px; padding: 9px 10px; font-size: 13px; font-weight: 700;
+  }
+  .v-ok { background: var(--ok-bg); color: var(--ok); }
+  .v-warn { background: var(--warn-bg); color: var(--warn); }
+  .v-stop { background: var(--stop-bg); color: var(--stop); }
+  .dot { font-size: 15px; }
+  .foot {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);
+  }
+  .foot b { font-size: 15px; }
+  .foot span { font-size: 13px; color: var(--muted); }
+</style>
+<body>
+  <div class="ask">
+    <div class="who">YOU</div>
+    <div class="bubble">can you clean this up real quick?</div>
+  </div>
+
+  <div class="row">
+    <div>
+      <div class="cmd">rm -rf ./build</div>
+      <div class="sub">regenerable, nothing unique inside</div>
+    </div>
+    <div class="talk">
+      <div class="line"><span class="tag">guard</span><span style="color:var(--muted)">nothing to ask — this one is free.</span></div>
+    </div>
+    <div class="verdict v-ok"><span class="dot">✅</span> runs</div>
+  </div>
+
+  <div class="row">
+    <div>
+      <div class="cmd">gh repo delete acme/old-demo</div>
+      <div class="sub">a whole repository</div>
+    </div>
+    <div class="talk">
+      <div class="line"><span class="tag">guard</span><span class="guard">Sure? Deleting a repo. GitHub restores it for 90 days.</span></div>
+      <div class="line"><span class="tag">agent</span><span>Sure: you asked for it, nothing unique in it, and it comes back.</span></div>
+    </div>
+    <div class="verdict v-warn"><span class="dot">⚠️</span> agent<br>confirms, runs</div>
+  </div>
+
+  <div class="row">
+    <div>
+      <div class="cmd">DELETE /drive/v3/files/{id}</div>
+      <div class="sub">looks like “move to trash”. it isn’t.</div>
+    </div>
+    <div class="talk">
+      <div class="line"><span class="tag">guard</span><span class="guard">Sure? This call skips the trash. Nothing comes back.</span></div>
+      <div class="line"><span class="tag">agent</span><span>Ah — let me re-check the docs and use the trash endpoint instead.</span></div>
+    </div>
+    <div class="verdict v-stop"><span class="dot">🛑</span> stopped<br>before damage</div>
+  </div>
+
+  <div class="foot">
+    <b>Reversible → out of your way. Irreversible → you decide.</b>
+    <span>inattention-is-all-you-heed — a pre-tool-call hook for Claude Code, Codex, OpenClaw and friends</span>
+  </div>
+</body>
+</html>
